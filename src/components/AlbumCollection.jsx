@@ -1,9 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AlbumCard from './AlbumCard';
 import SongList from './SongList';
 import { FaRegSave } from "react-icons/fa";
 import { RxCross1 } from "react-icons/rx";
 import { IoAddOutline } from "react-icons/io5";
+import { HiPencilAlt } from "react-icons/hi";
+import { FaTrashAlt, FaCheckCircle } from "react-icons/fa";
+import { MdAddCircle } from "react-icons/md";
+import { IoMdRefresh } from "react-icons/io";
+import { HiXCircle } from "react-icons/hi2";
 
 const initialAlbums = [
     {
@@ -146,33 +151,50 @@ const getNextId = (albumsArray) => {
 };
 
 function AlbumCollection() {
-    const [albums, setAlbums] = useState(initialAlbums);
+    const [albums, setAlbums] = useState(initialAlbums.map(album => ({ ...album, isListened: false })));
     const [selectedAlbum, setSelectedAlbum] = useState(null);
     const [showForm, setShowForm] = useState(false);
+    const [editingAlbum, setEditingAlbum] = useState(null);
     const [newTitle, setNewTitle] = useState('');
     const [newYear, setNewYear] = useState('');
     const [newSongs, setNewSongs] = useState('');
+    const [notification, setNotification] = useState({ icon: null, text: '', type: '' });
 
-    const deleteAlbum = (id) => {
-        setAlbums(albums.filter(album => album.id !== id));
+    useEffect(() => {
+        if (notification.text) {
+            const timer = setTimeout(() => {
+                setNotification({ icon: null, text: '', type: '' });
+            }, 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [notification]);
+
+    const showNotification = (icon, text, type = 'success') => {
+        setNotification({ icon, text, type });
     };
 
-    const handleAlbumClick = (album) => setSelectedAlbum(album);
-    const handleCloseModal = () => setSelectedAlbum(null);
+    const deleteAlbum = (id) => {
+        const deletedAlbum = albums.find(a => a.id === id);
+        setAlbums(albums.filter(album => album.id !== id));
+        showNotification(<FaTrashAlt />, `Альбом "${deletedAlbum?.title}" удалён`, 'danger');
+    };
 
     const toggleListened = (id) => {
+        const album = albums.find(a => a.id === id);
+        const newStatus = !album?.isListened;
         setAlbums(albums.map(album =>
-            album.id === id ? { ...album, isListened: !album.isListened } : album
+            album.id === id ? { ...album, isListened: newStatus } : album
         ));
+        const icon = newStatus ? <FaCheckCircle /> : <HiXCircle />;
+        const message = `"${album?.title}" ${newStatus ? 'отмечен как прослушанный' : 'отмечен как непрослушанный'}`;
+        showNotification(icon, message, 'info');
     };
 
     const addAlbum = (e) => {
         e.preventDefault();
         if (!newTitle.trim() || !newYear) return;
-
         const songsArray = newSongs.split(',').map(s => s.trim()).filter(s => s);
-        const newId = Math.max(...albums.map(a => a.id), 0) + 1;
-
+        const newId = getNextId(albums);
         const newAlbum = {
             id: newId,
             title: newTitle.trim(),
@@ -181,21 +203,66 @@ function AlbumCollection() {
             songs: songsArray.length ? songsArray : ['Нет песен'],
             isListened: false
         };
-
         setAlbums([newAlbum, ...albums]);
         setNewTitle('');
         setNewYear('');
         setNewSongs('');
         setShowForm(false);
+        showNotification(<MdAddCircle />, `Альбом "${newAlbum.title}" добавлен`, 'success');
     };
+
+    const startEdit = (album) => {
+        setEditingAlbum(album);
+        setNewTitle(album.title);
+        setNewYear(album.year.toString());
+        setNewSongs(album.songs.join(', '));
+        setShowForm(true);
+    };
+
+    const updateAlbum = (e) => {
+        e.preventDefault();
+        if (!newTitle.trim() || !newYear) return;
+        const songsArray = newSongs.split(',').map(s => s.trim()).filter(s => s);
+        const updatedAlbum = {
+            ...editingAlbum,
+            title: newTitle.trim(),
+            year: parseInt(newYear, 10),
+            songs: songsArray.length ? songsArray : ['Нет песен'],
+            image: editingAlbum.image,
+        };
+        setAlbums(albums.map(album => album.id === editingAlbum.id ? updatedAlbum : album));
+        setEditingAlbum(null);
+        setNewTitle('');
+        setNewYear('');
+        setNewSongs('');
+        setShowForm(false);
+        showNotification(<IoMdRefresh />, `Альбом "${updatedAlbum.title}" обновлён`, 'success');
+    };
+
+    const cancelForm = () => {
+        setShowForm(false);
+        setEditingAlbum(null);
+        setNewTitle('');
+        setNewYear('');
+        setNewSongs('');
+    };
+
+    const handleAlbumClick = (album) => setSelectedAlbum(album);
+    const handleCloseModal = () => setSelectedAlbum(null);
 
     return (
         <>
+            {notification.text && (
+                <div className={`toast-notification toast-${notification.type}`}>
+                    <span className="me-2">{notification.icon}</span> {notification.text}
+                </div>
+            )}
+
             <div className="text-center mb-4">
-                <button
-                    className="btn btn-success btn-lg"
-                    onClick={() => setShowForm(!showForm)}
-                >
+                <button className="btn btn-success btn-lg" onClick={() => {
+                    if (showForm) cancelForm();
+                    else { setEditingAlbum(null); setShowForm(true); }
+                }}>
                     {showForm ? <RxCross1 className="me-1" /> : <IoAddOutline className="me-1" />}
                     {showForm ? ' Отменить' : ' Добавить альбом'}
                 </button>
@@ -203,41 +270,26 @@ function AlbumCollection() {
 
             {showForm && (
                 <div className="card mb-5 p-3 bg-dark text-white">
-                    <h4 className="mb-3">Добавить новый альбом</h4>
-                    <form onSubmit={addAlbum}>
+                    <h4 className="mb-3">{editingAlbum ? 'Редактировать альбом' : 'Добавить новый альбом'}</h4>
+                    <form onSubmit={editingAlbum ? updateAlbum : addAlbum}>
                         <div className="mb-3">
                             <label className="form-label">Название альбома</label>
-                            <input
-                                type="text"
-                                className="form-control"
-                                value={newTitle}
-                                onChange={(e) => setNewTitle(e.target.value)}
-                                required
-                            />
+                            <input type="text" className="form-control" value={newTitle} onChange={e => setNewTitle(e.target.value)} required />
                         </div>
                         <div className="mb-3">
                             <label className="form-label">Год выпуска</label>
-                            <input
-                                type="number"
-                                className="form-control"
-                                value={newYear}
-                                onChange={(e) => setNewYear(e.target.value)}
-                                required
-                            />
+                            <input type="number" className="form-control" value={newYear} onChange={e => setNewYear(e.target.value)} required />
                         </div>
                         <div className="mb-3">
                             <label className="form-label">Список песен (через запятую)</label>
-                            <textarea
-                                className="form-control"
-                                rows="3"
-                                value={newSongs}
-                                onChange={(e) => setNewSongs(e.target.value)}
-                                placeholder="Например: Песня 1, Песня 2"
-                            />
+                            <textarea className="form-control" rows="3" value={newSongs} onChange={e => setNewSongs(e.target.value)} placeholder="Например: Песня 1, Песня 2" />
                         </div>
                         <button type="submit" className="btn btn-primary">
-                            <FaRegSave className="me-1" /> Сохранить альбом
+                            <FaRegSave className="me-1" /> {editingAlbum ? 'Сохранить изменения' : 'Сохранить альбом'}
                         </button>
+                        {editingAlbum && (
+                            <button type="button" className="btn btn-secondary ms-2" onClick={cancelForm}>Отмена</button>
+                        )}
                     </form>
                 </div>
             )}
@@ -250,6 +302,7 @@ function AlbumCollection() {
                         onAlbumClick={handleAlbumClick}
                         onDelete={deleteAlbum}
                         onToggleListened={toggleListened}
+                        onEdit={startEdit}
                     />
                 ))}
             </div>
