@@ -2,6 +2,8 @@
 
 ## Скриншоты
 
+<img width="1917" height="1009" alt="5" src="https://github.com/user-attachments/assets/f2a04eea-4831-459a-921d-8a03c502936f" />
+
  ![alt text](1.png)
 
  ![alt text](2.png)
